@@ -73,10 +73,11 @@ pub struct TrackLinks {
     pub self_link: String,
 }
 
+const TIDAL_API: &str = "https://openapi.tidal.com/v2";
+
 pub async fn fetch_playlists(client: &TidalClient) -> Result<Vec<TidalPlaylist>, Box<dyn std::error::Error>> {
-    let url = "https://openapi.tidal.com/v2";
     let response = Client::new()
-        .get(format!("{}/playlists/me", &url))
+        .get(format!("{}/playlists/me", TIDAL_API))
         .bearer_auth(&client.token)
         .send()
         .await?;
@@ -110,7 +111,7 @@ pub async fn fetch_playlists(client: &TidalClient) -> Result<Vec<TidalPlaylist>,
                     }
 
                     let items_response = Client::new()
-                        .get(format!("{}{}", &url, &items_url))
+                        .get(format!("{}{}", TIDAL_API, &items_url))
                         .bearer_auth(&client.token)
                         .send()
                         .await?;
@@ -156,9 +157,8 @@ pub async fn fetch_playlists(client: &TidalClient) -> Result<Vec<TidalPlaylist>,
 }
 
 pub async fn fetch_track_details(client: &TidalClient, track_ids: Vec<String>, country_code: &str) -> Result<Vec<TidalTrack>, Box<dyn std::error::Error>> {
-    let url = "https://openapi.tidal.com/v2/tracks";
     let response = Client::new()
-        .get(url)
+        .get(format!("{}/tracks", TIDAL_API))
         .query(&[("countryCode", country_code), ("filter[id]", &*track_ids.join(","))])
         .bearer_auth(&client.token)
         .send()

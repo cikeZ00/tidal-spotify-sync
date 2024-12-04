@@ -53,9 +53,11 @@ struct CreatePlaylistRequest {
     public: bool,
 }
 
+const SPOTIFY_API: &str = "https://api.spotify.com/v1";
+
 pub async fn create_playlist(client: &SpotifyClient, name: &str, description: &str, public: bool) -> Result<String, Box<dyn std::error::Error>> {
     let user_id = get_current_user(client).await?.id;
-    let url = format!("https://api.spotify.com/v1/users/{}/playlists", user_id);
+    let url = format!("{}/users/{}/playlists", SPOTIFY_API, user_id);
     let request_body = CreatePlaylistRequest {
         name: name.to_string(),
         description: description.to_string(),
@@ -82,7 +84,7 @@ pub async fn add_tracks_to_playlist(client: &SpotifyClient, playlist_id: &str, i
         track_uris.push(track_uri);
     }
 
-    let url = format!("https://api.spotify.com/v1/playlists/{}/tracks", playlist_id);
+    let url = format!("{}/playlists/{}/tracks", SPOTIFY_API, playlist_id);
     let response = Client::new()
         .post(&url)
         .bearer_auth(&client.token)
@@ -98,7 +100,7 @@ pub async fn add_tracks_to_playlist(client: &SpotifyClient, playlist_id: &str, i
 }
 
 pub async fn fetch_spotify_playlist(client: &SpotifyClient, playlist_id: &str) -> Result<Value, Box<dyn std::error::Error>> {
-    let url = format!("https://api.spotify.com/v1/playlists/{}", playlist_id);
+    let url = format!("{}/playlists/{}", SPOTIFY_API, playlist_id);
     let response = Client::new()
         .get(&url)
         .bearer_auth(&client.token)
@@ -110,7 +112,7 @@ pub async fn fetch_spotify_playlist(client: &SpotifyClient, playlist_id: &str) -
 }
 
 async fn get_current_user(client: &SpotifyClient) -> Result<SpotifyUser, Box<dyn std::error::Error>> {
-    let url = "https://api.spotify.com/v1/me";
+    let url = format!("{}/me", SPOTIFY_API);
     let response = Client::new()
         .get(url)
         .bearer_auth(&client.token)
@@ -123,7 +125,7 @@ async fn get_current_user(client: &SpotifyClient) -> Result<SpotifyUser, Box<dyn
 }
 
 async fn get_track_uri_from_isrc(client: &SpotifyClient, isrc: &str) -> Result<String, Box<dyn std::error::Error>> {
-    let url = format!("https://api.spotify.com/v1/search?q=isrc:{}&type=track", isrc);
+    let url = format!("{}/search?q=isrc:{}&type=track", SPOTIFY_API, isrc);
     let response = Client::new()
         .get(&url)
         .bearer_auth(&client.token)
