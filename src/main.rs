@@ -3,6 +3,8 @@ mod spotify;
 mod sync;
 mod config;
 mod utils;
+mod db;
+
 use env_logger;
 
 

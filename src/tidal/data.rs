@@ -4,12 +4,17 @@ use serde::Deserialize;
 use crate::tidal::TidalClient;
 use serde_json::Value;
 use tokio::time::{sleep, Duration};
+use chrono::NaiveDateTime;
+use crate::db::get_playlist_last_modified;
+use rusqlite::{params, Connection};
 
+// TODO: Make data we dont store optional in the Structs
 #[derive(Deserialize, Debug)]
 pub struct TidalPlaylist {
     pub id: String,
     pub name: String,
     pub tracks: Vec<TidalTrack>,
+    pub last_updated: Option<String>,
 }
 
 #[derive(Deserialize, Debug)]
@@ -75,7 +80,7 @@ pub struct TrackLinks {
 
 const TIDAL_API: &str = "https://openapi.tidal.com/v2";
 
-pub async fn fetch_playlists(client: &TidalClient) -> Result<Vec<TidalPlaylist>, Box<dyn std::error::Error>> {
+pub async fn fetch_playlists(client: &TidalClient, conn: &Connection) -> Result<Vec<TidalPlaylist>, Box<dyn std::error::Error>> {
     let response = Client::new()
         .get(format!("{}/playlists/me", TIDAL_API))
         .bearer_auth(&client.token)
@@ -100,6 +105,40 @@ pub async fn fetch_playlists(client: &TidalClient) -> Result<Vec<TidalPlaylist>,
             for playlist in data {
                 let id = playlist["id"].as_str().unwrap_or_default().to_string();
                 let name = playlist["attributes"]["name"].as_str().unwrap_or_default().to_string();
+                let last_updated = playlist["attributes"]["lastModifiedAt"].as_str().map(|s| s.to_string());
+
+                // Check if the playlist should be skipped based on the last updated date
+                if let Some(last_updated_str) = &last_updated {
+                    println!("Last updated date: {:?}", last_updated_str);
+                    match NaiveDateTime::parse_from_str(last_updated_str, "%Y-%m-%dT%H:%M:%S%.fZ") {
+                        Ok(last_updated_date) => {
+                            let saved_last_modified = get_playlist_last_modified(conn, &id)?;
+                            println!("Saved last modified date: {:?}", saved_last_modified);
+                            if let Some(saved_date) = saved_last_modified {
+                                match NaiveDateTime::parse_from_str(&saved_date, "%Y-%m-%dT%H:%M:%S%.fZ") {
+                                    Ok(saved_date_parsed) => {
+                                        if saved_date_parsed >= last_updated_date {
+                                            println!("[TIDAL] Skipping playlist: {}", name);
+                                            // Fetch local version from the database
+                                            let local_tracks = fetch_local_playlist_tracks(conn, &id)?;
+                                            playlists.push(TidalPlaylist { id, name, tracks: local_tracks, last_updated });
+                                            continue;
+                                        }
+                                    }
+                                    Err(e) => {
+                                        eprintln!("[TIDAL] Failed to parse saved date: {}", e);
+                                        continue;
+                                    }
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            eprintln!("Failed to parse last updated date: {}", e);
+                            continue;
+                        }
+                    }
+                }
+
                 let mut items_url = playlist["relationships"]["items"]["links"]["self"].as_str().unwrap_or_default().to_string();
                 let mut tracks = Vec::new();
 
@@ -146,7 +185,7 @@ pub async fn fetch_playlists(client: &TidalClient) -> Result<Vec<TidalPlaylist>,
                     }
                 }
 
-                playlists.push(TidalPlaylist { id, name, tracks });
+                playlists.push(TidalPlaylist { id, name, tracks, last_updated });
             }
         }
 
@@ -154,6 +193,36 @@ pub async fn fetch_playlists(client: &TidalClient) -> Result<Vec<TidalPlaylist>,
     } else {
         Err(format!("Failed to fetch playlists: {}", response.status()).into())
     }
+}
+
+fn fetch_local_playlist_tracks(conn: &Connection, playlist_id: &str) -> Result<Vec<TidalTrack>, Box<dyn std::error::Error>> {
+    let mut stmt = conn.prepare("SELECT id, isrc FROM tracks WHERE playlist_id = ?1")?;
+    let tracks = stmt.query_map(params![playlist_id], |row| {
+        Ok(TidalTrack {
+            id: row.get(0)?,
+            attributes: TrackAttributes {
+                title: String::new(), // Placeholder
+                isrc: row.get(1)?,
+                duration: String::new(), // Placeholder
+                explicit: false, // Placeholder
+                popularity: 0.0, // Placeholder
+                availability: vec![], // Placeholder
+                media_tags: vec![], // Placeholder
+                external_links: vec![], // Placeholder
+                copyright: String::new(), // Placeholder
+            },
+            relationships: TrackRelationships {
+                albums: RelationshipLinks { links: RelationshipSelfLink { self_link: String::new() } },
+                artists: RelationshipLinks { links: RelationshipSelfLink { self_link: String::new() } },
+                providers: RelationshipLinks { links: RelationshipSelfLink { self_link: String::new() } },
+                radio: RelationshipLinks { links: RelationshipSelfLink { self_link: String::new() } },
+                similar_tracks: RelationshipLinks { links: RelationshipSelfLink { self_link: String::new() } },
+            },
+            links: TrackLinks { self_link: String::new() },
+        })
+    })?.collect::<Result<Vec<_>, _>>()?;
+
+    Ok(tracks)
 }
 
 pub async fn fetch_track_details(client: &TidalClient, track_ids: Vec<String>, country_code: &str) -> Result<Vec<TidalTrack>, Box<dyn std::error::Error>> {
@@ -183,6 +252,7 @@ pub async fn fetch_track_details(client: &TidalClient, track_ids: Vec<String>, c
         Err(format!("Failed to fetch track details: {}", response.status()).into())
     }
 }
+
 fn get_remaining_tokens(headers: &HeaderMap) -> i32 {
     headers.get("X-RateLimit-Remaining")
         .and_then(|value| value.to_str().ok())

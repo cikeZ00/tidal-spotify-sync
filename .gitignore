@@ -18,3 +18,4 @@ Cargo.lock
 config.toml
 tidal_tokens.txt
 spotify_tokens.txt
+playlists.db
