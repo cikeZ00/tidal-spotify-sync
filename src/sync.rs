@@ -1,10 +1,9 @@
-use rusqlite::params;
-use chrono::NaiveDateTime;
-use crate::db::{initialize_db, insert_playlist, insert_track, get_playlist_id, check_playlist_integrity, playlist_exists, get_spotify_playlist_id};
-use crate::tidal::data::fetch_playlists;
-use crate::spotify::data::{create_playlist, add_tracks_to_playlist, fetch_spotify_playlist};
-use crate::tidal::TidalClient;
+use crate::db::{check_playlist_integrity, get_playlist_id, get_spotify_playlist_id, initialize_db, insert_playlist, insert_track, playlist_exists};
+use crate::spotify::data::{add_tracks_to_playlist, create_playlist, fetch_spotify_playlist};
 use crate::spotify::SpotifyClient;
+use crate::tidal::data::fetch_playlists;
+use crate::tidal::TidalClient;
+use rusqlite::params;
 
 pub async fn sync_data(
     tidal_client: &TidalClient,
